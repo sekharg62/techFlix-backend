@@ -6,5 +6,6 @@ const router = Router();
 router.get('/', userController.getUsers);
 router.get('/:id', userController.getUserById);
 router.post('/', userController.createUser);
+router.post('/login', userController.loginUser);
 
 export { router as userRoutes };
