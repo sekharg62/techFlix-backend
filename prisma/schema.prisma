@@ -12,3 +12,31 @@ model User {
   name     String?
   password String
 }
+
+model Review {
+  id          String   @id @default(uuid())
+  name        String
+  role        String?
+  description String
+  profileUrl  String?
+  starCount   Int      @default(5)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+model HeroSlide {
+  id        String   @id @default(uuid())
+  order     Int      @unique
+  imageUrl  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  desc      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+

@@ -1,6 +1,10 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { userRoutes } from './modules/users/users.routes';
+import { reviewRoutes } from './modules/reviews/reviews.routes';
+import { uploadRoutes } from './modules/upload/upload.routes';
+import heroSlideRoutes from './modules/heroSlides/heroSlides.routes';
+import { categoryRoutes } from './modules/categories/categories.routes';
 
 const app: Application = express();
 
@@ -11,6 +15,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api/users', userRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/hero-slides', heroSlideRoutes);
+app.use('/api/categories', categoryRoutes);
 
 // Health check
 app.get('/', (req: Request, res: Response) => {
