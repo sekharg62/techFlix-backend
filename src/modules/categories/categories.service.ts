@@ -30,6 +30,29 @@ export const categoriesService = {
     });
   },
 
+  getCategoriesWithProductCount: async () => {
+    const categories = await prisma.category.findMany({
+      select: {
+        name: true,
+        slug: true,
+        _count: {
+          select: {
+            products: true,
+          },
+        },
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+
+    return categories.map((cat) => ({
+      name: cat.name,
+      slug: cat.slug,
+      totalProducts: cat._count.products,
+    }));
+  },
+
   getCategoryById: async (id: string) => {
     return await prisma.category.findUnique({
       where: { id },

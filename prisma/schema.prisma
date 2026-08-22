@@ -22,21 +22,84 @@ model Review {
   starCount   Int      @default(5)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([starCount])
 }
+
 model HeroSlide {
   id        String   @id @default(uuid())
   order     Int      @unique
   imageUrl  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([order])
+  @@index([createdAt])
 }
 
 model Category {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   name      String
-  slug      String   @unique
+  slug      String    @unique
   desc      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([name])
+  @@index([createdAt])
 }
+
+model Product {
+  id                  String               @id @default(uuid())
+  categoryId          String?
+  category            Category?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  imgUrl              String
+  name                String
+  slug                String               @unique
+  smallDesc           String
+  stock               Boolean              @default(true)
+  type                String[]
+  plans               Json
+  longDesc            String?
+  features            Json?
+  homeSectionProducts HomeSectionProduct[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([categoryId])
+  @@index([stock])
+  @@index([name])
+  @@index([slug])
+  @@index([createdAt])
+}
+
+model HomeSection {
+  id                  String               @id @default(uuid())
+  title               String
+  desc                String
+  tag                 String
+  homeSectionProducts HomeSectionProduct[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([createdAt])
+}
+
+model HomeSectionProduct {
+  id            String      @id @default(uuid())
+  homeSectionId String
+  homeSection   HomeSection @relation(fields: [homeSectionId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([homeSectionId, productId])
+  @@index([homeSectionId])
+  @@index([productId])
+  @@index([createdAt])
+}
+
 

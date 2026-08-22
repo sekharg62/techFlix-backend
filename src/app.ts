@@ -5,6 +5,9 @@ import { reviewRoutes } from './modules/reviews/reviews.routes';
 import { uploadRoutes } from './modules/upload/upload.routes';
 import heroSlideRoutes from './modules/heroSlides/heroSlides.routes';
 import { categoryRoutes } from './modules/categories/categories.routes';
+import { productRoutes } from './modules/products/products.routes';
+import { homeSectionRoutes } from './modules/homeSections/homeSections.routes';
+import { homeSectionProductRoutes } from './modules/homeSectionProducts/homeSectionProducts.routes';
 
 const app: Application = express();
 
@@ -19,6 +22,9 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/hero-slides', heroSlideRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/home-sections', homeSectionRoutes);
+app.use('/api/home-section-products', homeSectionProductRoutes);
 
 // Health check
 app.get('/', (req: Request, res: Response) => {

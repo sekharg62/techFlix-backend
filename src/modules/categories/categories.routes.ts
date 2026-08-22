@@ -5,6 +5,8 @@ const router = Router();
 
 // Public / Read Endpoints
 router.get('/', categoriesController.getAll);
+router.get('/summary', categoriesController.getSummary);
+router.get('/counts', categoriesController.getSummary);
 router.get('/:id', categoriesController.getById);
 
 // Create, Update, Delete Endpoints

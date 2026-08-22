@@ -18,6 +18,22 @@ export const categoriesController = {
     }
   },
 
+  getSummary: async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const summary = await categoriesService.getCategoriesWithProductCount();
+      res.status(200).json({
+        success: true,
+        count: summary.length,
+        data: summary,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Failed to fetch categories summary',
+      });
+    }
+  },
+
   getById: async (req: Request, res: Response): Promise<void> => {
     try {
       const id = req.params.id as string;
