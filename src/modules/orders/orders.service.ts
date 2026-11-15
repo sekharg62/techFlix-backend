@@ -10,6 +10,8 @@ import { badRequest, conflict, notFound, paginationMeta, parsePagination } from 
 type Tx = Prisma.TransactionClient;
 
 const MAX_ITEMS = 20;
+/** Must match PAYOUT_CHARGE_PERCENT in techFlix-Next/src/lib/pricing.ts. */
+export const PAYOUT_CHARGE_PERCENT = 2;
 const MAX_QUANTITY = 10;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?[0-9]{7,15}$/;
@@ -225,7 +227,10 @@ export const ordersService = {
     });
 
     const discount = new Prisma.Decimal(0);
-    const total = subtotal.sub(discount);
+    // Payout (cash-out) charge: 2% of the discounted subtotal, rounded up to a whole taka.
+    // Stored inside `total` (charge = total - subtotal + discount), so no extra column is needed.
+    const payoutCharge = subtotal.sub(discount).mul(PAYOUT_CHARGE_PERCENT).div(100).ceil();
+    const total = subtotal.sub(discount).add(payoutCharge);
 
     await ensureTrxIdUnused(prisma, payment.trxId);
 
