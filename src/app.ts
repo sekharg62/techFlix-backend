@@ -13,6 +13,7 @@ import { paymentRoutes } from './modules/payments/payments.routes';
 import { customerRoutes } from './modules/customers/customers.routes';
 import { paymentMethodRoutes } from './modules/paymentMethods/paymentMethods.routes';
 import { dashboardRoutes } from './modules/dashboard/dashboard.routes';
+import { subscriptionAlertRoutes } from './modules/subscriptionAlerts/subscriptionAlerts.routes';
 import { decimalReplacer } from './utils/http';
 import { revalidateStorefront as storefront } from './middlewares/storefrontRevalidate.middleware';
 
@@ -40,6 +41,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/payment-methods', storefront('payment-methods'), paymentMethodRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/subscription-alerts', subscriptionAlertRoutes);
 
 // Health check
 app.get('/', (req: Request, res: Response) => {

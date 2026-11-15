@@ -260,6 +260,8 @@ model OrderItem {
   // License key / account credentials delivered by admin
   deliveryDetails String?
   deliveredAt     DateTime?
+  /// deliveredAt + planDurationDays — set on delivery, indexed for the subscription-alerts page
+  expiresAt       DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -267,6 +269,7 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
   @@index([planId])
+  @@index([expiresAt])
 }
 
 model Payment {

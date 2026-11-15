@@ -479,9 +479,15 @@ export const ordersService = {
       const item = await tx.orderItem.findFirst({ where: { id: itemId, orderId: order.id } });
       if (!item) throw notFound('Order item not found');
 
+      const deliveredAt = item.deliveredAt ?? new Date();
       await tx.orderItem.update({
         where: { id: item.id },
-        data: { deliveryDetails: details, deliveredAt: item.deliveredAt ?? new Date() },
+        data: {
+          deliveryDetails: details,
+          deliveredAt,
+          // Subscription end date: confirmed (delivered) date + plan validity days
+          expiresAt: item.planDurationDays ? new Date(deliveredAt.getTime() + item.planDurationDays * 86_400_000) : null,
+        },
       });
 
       if (order.status === 'PROCESSING') {
