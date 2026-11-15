@@ -71,7 +71,7 @@ router.get(
       include: {
         orders: {
           orderBy: { createdAt: 'desc' },
-          include: { items: { select: { productName: true, planName: true, quantity: true } } },
+          include: { items: { select: { productName: true, variantName: true, planName: true, quantity: true } } },
         },
       },
     });

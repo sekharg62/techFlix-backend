@@ -12,6 +12,14 @@ export interface PlanInput {
   inStock?: boolean;
 }
 
+export interface VariantInput {
+  id?: string;
+  name: string;
+  description?: string | null;
+  inStock?: boolean;
+  plans: PlanInput[];
+}
+
 export interface CreateProductDTO {
   name: string;
   slug?: string;
@@ -20,7 +28,8 @@ export interface CreateProductDTO {
   categoryId?: string | null;
   stock?: boolean;
   type?: string[];
-  plans: PlanInput[];
+  plans?: PlanInput[];
+  variants?: VariantInput[];
   longDesc?: string | null;
   features?: any;
 }
@@ -34,6 +43,7 @@ export interface UpdateProductDTO {
   stock?: boolean;
   type?: string[];
   plans?: PlanInput[];
+  variants?: VariantInput[];
   longDesc?: string | null;
   features?: any;
 }
@@ -60,28 +70,45 @@ export const plansInclude = {
     validity: true,
     inStock: true,
     sortOrder: true,
+    variantId: true,
+  },
+};
+
+/**
+ * Variants with their plans. `plans` on the product stays the flat list of ALL plans
+ * (each carrying `variantId`), so older clients keep working.
+ */
+export const variantsInclude = {
+  orderBy: { sortOrder: 'asc' as const },
+  select: {
+    id: true,
+    name: true,
+    description: true,
+    inStock: true,
+    sortOrder: true,
+    plans: plansInclude,
   },
 };
 
 /** Validate and normalise incoming plan objects. Throws on invalid input. */
-export const normalizePlans = (plans: PlanInput[]) => {
+export const normalizePlans = (plans: PlanInput[], path = 'plans') => {
   if (!Array.isArray(plans)) {
-    throw new Error('plans must be an array');
+    throw new Error(`${path} must be an array`);
   }
   return plans.map((plan, index) => {
     const name = String(plan?.name || plan?.title || '').trim();
     if (!name) {
-      throw new Error(`plans[${index}].name is required`);
+      throw new Error(`${path}[${index}].name is required`);
     }
     const price = Number(plan.price);
     if (!Number.isFinite(price) || price < 0) {
-      throw new Error(`plans[${index}].price must be a non-negative number`);
+      throw new Error(`${path}[${index}].price must be a non-negative number`);
     }
     let durationDays: number | null = null;
     if (plan.durationDays !== undefined && plan.durationDays !== null && plan.durationDays !== '') {
       durationDays = Number(plan.durationDays);
       if (!Number.isInteger(durationDays) || durationDays < 0) {
-        throw new Error(`plans[${index}].durationDays must be a non-negative integer`);
+        throw new Error(`${path}[${index}].durationDays must be a non-negative integer`);
       }
     }
     return {
@@ -94,6 +121,118 @@ export const normalizePlans = (plans: PlanInput[]) => {
       sortOrder: index,
     };
   });
+};
+
+/** Validate and normalise incoming variants (each with its own plans). Throws on invalid input. */
+export const normalizeVariants = (variants: VariantInput[]) => {
+  if (!Array.isArray(variants)) {
+    throw new Error('variants must be an array');
+  }
+  const seen = new Set<string>();
+  return variants.map((variant, index) => {
+    const name = String(variant?.name || '').trim();
+    if (!name) {
+      throw new Error(`variants[${index}].name is required`);
+    }
+    const key = name.toLowerCase();
+    if (seen.has(key)) {
+      throw new Error(`variants[${index}].name "${name}" is used twice`);
+    }
+    seen.add(key);
+    const plans = normalizePlans(variant.plans ?? [], `variants[${index}].plans`);
+    if (plans.length === 0) {
+      throw new Error(`variants[${index}] ("${name}") needs at least one plan`);
+    }
+    return {
+      id: typeof variant.id === 'string' && variant.id ? variant.id : undefined,
+      name,
+      description: variant.description ? String(variant.description).trim() || null : null,
+      inStock: variant.inStock !== undefined ? Boolean(variant.inStock) : true,
+      sortOrder: index,
+      plans,
+    };
+  });
+};
+
+type NormalizedPlan = ReturnType<typeof normalizePlans>[number];
+type NormalizedVariant = ReturnType<typeof normalizeVariants>[number];
+
+/**
+ * Sync a product's variants and plans inside a transaction.
+ * - `plans` (when given) replaces the plans WITHOUT a variant.
+ * - `variants` (when given) replaces all variants and their plans.
+ * Leaving one out keeps that part untouched. Existing ids are updated in place so order history keeps its links.
+ */
+const syncProductPlans = async (
+  tx: Prisma.TransactionClient,
+  productId: string,
+  plans: NormalizedPlan[] | undefined,
+  variants: NormalizedVariant[] | undefined,
+) => {
+  if (plans === undefined && variants === undefined) return;
+
+  // Sequential on purpose: one connection per interactive transaction.
+  const existingPlans = await tx.productPlan.findMany({ where: { productId }, select: { id: true, variantId: true } });
+  const existingVariants = await tx.productVariant.findMany({ where: { productId }, select: { id: true } });
+  const productPlanIds = new Set(existingPlans.map((p) => p.id));
+  const productVariantIds = new Set(existingVariants.map((v) => v.id));
+  const keptPlanIds = new Set<string>();
+  const keptVariantIds = new Set<string>();
+
+  const upsertPlan = async ({ id: planId, ...plan }: NormalizedPlan, variantId: string | null) => {
+    if (planId && productPlanIds.has(planId)) {
+      await tx.productPlan.update({ where: { id: planId }, data: { ...plan, variantId } });
+      keptPlanIds.add(planId);
+    } else {
+      const created = await tx.productPlan.create({ data: { ...plan, productId, variantId } });
+      keptPlanIds.add(created.id);
+    }
+  };
+
+  if (variants !== undefined) {
+    // Free up every existing name first so renames, swaps and "delete Mobile + add Mobile"
+    // can't hit the (productId, name) unique index. Kept variants get their real name back below.
+    if (productVariantIds.size > 0) {
+      await tx.$executeRaw`UPDATE "ProductVariant" SET "name" = '__tmp__' || "id" WHERE "productId" = ${productId}`;
+    }
+    for (const { id: variantId, plans: variantPlans, ...data } of variants) {
+      let vid: string;
+      if (variantId && productVariantIds.has(variantId)) {
+        await tx.productVariant.update({ where: { id: variantId }, data });
+        vid = variantId;
+      } else {
+        const created = await tx.productVariant.create({ data: { ...data, productId } });
+        vid = created.id;
+      }
+      keptVariantIds.add(vid);
+      for (const plan of variantPlans) await upsertPlan(plan, vid);
+    }
+  }
+
+  if (plans !== undefined) {
+    for (const plan of plans) await upsertPlan(plan, null);
+  }
+
+  // Delete plans in the replaced scope(s) that were not sent back.
+  const inScope = (p: { variantId: string | null }) =>
+    (plans !== undefined && p.variantId === null) || (variants !== undefined && p.variantId !== null);
+  const removedPlans = existingPlans.filter((p) => inScope(p) && !keptPlanIds.has(p.id)).map((p) => p.id);
+  if (removedPlans.length > 0) {
+    await tx.productPlan.deleteMany({ where: { id: { in: removedPlans } } });
+  }
+
+  if (variants !== undefined) {
+    const removedVariants = [...productVariantIds].filter((vid) => !keptVariantIds.has(vid));
+    if (removedVariants.length > 0) {
+      await tx.productVariant.deleteMany({ where: { id: { in: removedVariants } } });
+    }
+  }
+};
+
+const productInclude = {
+  category: { select: { id: true, name: true, slug: true } },
+  plans: plansInclude,
+  variants: variantsInclude,
 };
 
 export const productsService = {
@@ -151,6 +290,7 @@ export const productsService = {
             },
           },
           plans: plansInclude,
+          variants: variantsInclude,
         },
       }),
     ]);
@@ -183,6 +323,7 @@ export const productsService = {
           },
         },
         plans: plansInclude,
+        variants: variantsInclude,
       },
     });
   },
@@ -205,6 +346,7 @@ export const productsService = {
           },
         },
         plans: plansInclude,
+        variants: variantsInclude,
       },
     });
   },
@@ -227,6 +369,7 @@ export const productsService = {
           },
         },
         plans: plansInclude,
+        variants: variantsInclude,
       },
     });
   },
@@ -257,9 +400,14 @@ export const productsService = {
       throw new Error(`A product with slug '${slug}' already exists.`);
     }
 
-    const plans = normalizePlans(data.plans);
+    const plans = normalizePlans(data.plans ?? []);
+    const variants = data.variants !== undefined ? normalizeVariants(data.variants) : [];
+    if (plans.length === 0 && variants.length === 0) {
+      throw new Error('plans: add at least one plan or one variant with plans');
+    }
 
-    return await prisma.product.create({
+    return await prisma.$transaction(async (tx) => {
+      const created = await tx.product.create({
       data: {
         name: data.name.trim(),
         slug,
@@ -268,23 +416,13 @@ export const productsService = {
         categoryId: data.categoryId || null,
         stock: data.stock !== undefined ? Boolean(data.stock) : true,
         type: Array.isArray(data.type) ? data.type : [],
-        plans: {
-          create: plans.map(({ id: _id, ...plan }) => plan),
-        },
         longDesc: data.longDesc?.trim() || null,
         features: data.features !== undefined ? data.features : Prisma.JsonNull,
       },
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
-        },
-        plans: plansInclude,
-      },
-    });
+      });
+      await syncProductPlans(tx, created.id, plans, variants);
+      return await tx.product.findUniqueOrThrow({ where: { id: created.id }, include: productInclude });
+    }, { timeout: 30000 });
   },
 
   updateProduct: async (id: string, data: UpdateProductDTO) => {
@@ -336,46 +474,15 @@ export const productsService = {
     }
 
     const plans = data.plans !== undefined ? normalizePlans(data.plans) : undefined;
+    const variants = data.variants !== undefined ? normalizeVariants(data.variants) : undefined;
 
     return await prisma.$transaction(async (tx) => {
       await tx.product.update({ where: { id }, data: updateData });
 
-      if (plans) {
-        // Sync: update plans whose id belongs to this product, create the rest, delete removed ones.
-        const existing = await tx.productPlan.findMany({ where: { productId: id }, select: { id: true } });
-        const existingIds = new Set(existing.map((p) => p.id));
-        const keptIds = new Set<string>();
+      await syncProductPlans(tx, id, plans, variants);
 
-        for (const { id: planId, ...plan } of plans) {
-          if (planId && existingIds.has(planId)) {
-            await tx.productPlan.update({ where: { id: planId }, data: plan });
-            keptIds.add(planId);
-          } else {
-            const created = await tx.productPlan.create({ data: { ...plan, productId: id } });
-            keptIds.add(created.id);
-          }
-        }
-
-        const removed = [...existingIds].filter((planId) => !keptIds.has(planId));
-        if (removed.length > 0) {
-          await tx.productPlan.deleteMany({ where: { id: { in: removed } } });
-        }
-      }
-
-      return await tx.product.findUniqueOrThrow({
-        where: { id },
-        include: {
-          category: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-            },
-          },
-          plans: plansInclude,
-        },
-      });
-    });
+      return await tx.product.findUniqueOrThrow({ where: { id }, include: productInclude });
+    }, { timeout: 30000 });
   },
 
   deleteProduct: async (id: string) => {

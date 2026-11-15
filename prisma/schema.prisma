@@ -65,6 +65,7 @@ model Product {
   stock               Boolean              @default(true)
   type                String[]
   plans               ProductPlan[]
+  variants            ProductVariant[]
   longDesc            String?
   features            Json?
   homeSectionProducts HomeSectionProduct[]
@@ -110,22 +111,43 @@ model HomeSectionProduct {
 // Product plans (replaces the old Product.plans JSON column)
 // ─────────────────────────────────────────────
 
+/// A group of plans inside a product, e.g. "Mobile", "Desktop / TV" (each with its own 1/3/12-month plans).
+model ProductVariant {
+  id          String        @id @default(uuid())
+  productId   String
+  product     Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  inStock     Boolean       @default(true)
+  sortOrder   Int           @default(0)
+  plans       ProductPlan[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([productId, name])
+  @@index([productId, sortOrder])
+}
+
 model ProductPlan {
-  id           String      @id @default(uuid())
+  id           String          @id @default(uuid())
   productId    String
-  product      Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product      Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// null = plan without a variant (simple products)
+  variantId    String?
+  variant      ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
   name         String
-  price        Decimal     @db.Decimal(10, 2)
+  price        Decimal         @db.Decimal(10, 2)
   durationDays Int?
   validity     String?
-  inStock      Boolean     @default(true)
-  sortOrder    Int         @default(0)
+  inStock      Boolean         @default(true)
+  sortOrder    Int             @default(0)
   orderItems   OrderItem[]
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
   @@index([productId])
   @@index([productId, sortOrder])
+  @@index([variantId, sortOrder])
 }
 
 // ─────────────────────────────────────────────
@@ -226,6 +248,7 @@ model OrderItem {
   productName      String
   productSlug      String
   productImgUrl    String?
+  variantName      String?
   planName         String
   planDurationDays Int?
   planValidity     String?

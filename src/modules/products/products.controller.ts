@@ -126,7 +126,7 @@ export const productsController = {
 
   create: async (req: Request, res: Response): Promise<void> => {
     try {
-      const { name, slug, imgUrl, smallDesc, categoryId, stock, type, plans, longDesc, features } = req.body;
+      const { name, slug, imgUrl, smallDesc, categoryId, stock, type, plans, variants, longDesc, features } = req.body;
 
       if (!name || typeof name !== 'string' || name.trim().length === 0) {
         res.status(400).json({
@@ -160,10 +160,26 @@ export const productsController = {
         return;
       }
 
-      if (!Array.isArray(plans)) {
+      if (plans !== undefined && !Array.isArray(plans)) {
         res.status(400).json({
           success: false,
-          message: 'plans is required and must be an array of { name, price, durationDays?, validity? }',
+          message: 'plans must be an array of { name, price, durationDays?, validity? }',
+        });
+        return;
+      }
+
+      if (variants !== undefined && !Array.isArray(variants)) {
+        res.status(400).json({
+          success: false,
+          message: 'variants must be an array of { name, description?, inStock?, plans: [...] }',
+        });
+        return;
+      }
+
+      if (!Array.isArray(plans) && !Array.isArray(variants)) {
+        res.status(400).json({
+          success: false,
+          message: 'plans or variants is required',
         });
         return;
       }
@@ -185,6 +201,7 @@ export const productsController = {
         stock,
         type,
         plans,
+        variants,
         longDesc,
         features,
       });
@@ -197,7 +214,7 @@ export const productsController = {
     } catch (error: any) {
       const isConflict = error.message?.includes('already exists');
       const isNotFound = error.message?.includes('does not exist');
-      const isBadRequest = error.message?.startsWith('plans');
+      const isBadRequest = /^(plans|variants)/.test(error.message || '');
       res.status(isConflict ? 409 : isNotFound ? 404 : isBadRequest ? 400 : 500).json({
         success: false,
         message: error.message || 'Failed to create product',
@@ -208,7 +225,7 @@ export const productsController = {
   update: async (req: Request, res: Response): Promise<void> => {
     try {
       const id = req.params.id as string;
-      const { name, slug, imgUrl, smallDesc, categoryId, stock, type, plans, longDesc, features } = req.body;
+      const { name, slug, imgUrl, smallDesc, categoryId, stock, type, plans, variants, longDesc, features } = req.body;
 
       const existing = await productsService.getProductByIdOrSlug(id);
       if (!existing) {
@@ -259,6 +276,14 @@ export const productsController = {
         return;
       }
 
+      if (variants !== undefined && !Array.isArray(variants)) {
+        res.status(400).json({
+          success: false,
+          message: 'variants must be an array of { name, description?, inStock?, plans: [...] }',
+        });
+        return;
+      }
+
       const updated = await productsService.updateProduct(existing.id, {
         name,
         slug,
@@ -268,6 +293,7 @@ export const productsController = {
         stock,
         type,
         plans,
+        variants,
         longDesc,
         features,
       });
@@ -280,7 +306,7 @@ export const productsController = {
     } catch (error: any) {
       const isConflict = error.message?.includes('already exists');
       const isNotFound = error.message?.includes('does not exist');
-      const isBadRequest = error.message?.startsWith('plans');
+      const isBadRequest = /^(plans|variants)/.test(error.message || '');
       res.status(isConflict ? 409 : isNotFound ? 404 : isBadRequest ? 400 : 500).json({
         success: false,
         message: error.message || 'Failed to update product',

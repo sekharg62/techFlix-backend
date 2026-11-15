@@ -196,7 +196,7 @@ export const ordersService = {
 
     const plans = await prisma.productPlan.findMany({
       where: { id: { in: lines.map((l) => l.planId) } },
-      include: { product: true },
+      include: { product: true, variant: true },
     });
     const planById = new Map(plans.map((p) => [p.id, p]));
 
@@ -206,8 +206,9 @@ export const ordersService = {
       if (!plan || plan.productId !== line.productId) {
         throw badRequest('One of the selected plans no longer exists. Please refresh your cart.');
       }
-      if (!plan.product.stock || !plan.inStock) {
-        throw badRequest(`"${plan.product.name} - ${plan.name}" is out of stock`);
+      const label = [plan.product.name, plan.variant?.name, plan.name].filter(Boolean).join(' - ');
+      if (!plan.product.stock || !plan.inStock || (plan.variant && !plan.variant.inStock)) {
+        throw badRequest(`"${label}" is out of stock`);
       }
       const lineTotal = plan.price.mul(line.quantity);
       subtotal = subtotal.add(lineTotal);
@@ -217,6 +218,7 @@ export const ordersService = {
         productName: plan.product.name,
         productSlug: plan.product.slug,
         productImgUrl: plan.product.imgUrl,
+        variantName: plan.variant?.name ?? null,
         planName: plan.name,
         planDurationDays: plan.durationDays,
         planValidity: plan.validity,
@@ -308,6 +310,7 @@ export const ordersService = {
             productName: true,
             productSlug: true,
             productImgUrl: true,
+            variantName: true,
             planName: true,
             planValidity: true,
             unitPrice: true,
@@ -409,7 +412,7 @@ export const ordersService = {
         take: limit,
         orderBy: { createdAt: sortOrder },
         include: {
-          items: { select: { id: true, productName: true, planName: true, quantity: true, deliveredAt: true } },
+          items: { select: { id: true, productName: true, variantName: true, planName: true, quantity: true, deliveredAt: true } },
           payments: {
             orderBy: { createdAt: 'desc' },
             take: 1,
