@@ -2,6 +2,16 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../utils/prisma';
 import { generateSlug } from '../categories/categories.service';
 
+export interface PlanInput {
+  id?: string;
+  name?: string;
+  title?: string;
+  price: number | string;
+  durationDays?: number | string | null;
+  validity?: string | null;
+  inStock?: boolean;
+}
+
 export interface CreateProductDTO {
   name: string;
   slug?: string;
@@ -10,7 +20,7 @@ export interface CreateProductDTO {
   categoryId?: string | null;
   stock?: boolean;
   type?: string[];
-  plans: any;
+  plans: PlanInput[];
   longDesc?: string | null;
   features?: any;
 }
@@ -23,7 +33,7 @@ export interface UpdateProductDTO {
   categoryId?: string | null;
   stock?: boolean;
   type?: string[];
-  plans?: any;
+  plans?: PlanInput[];
   longDesc?: string | null;
   features?: any;
 }
@@ -38,6 +48,53 @@ export interface GetProductsQuery {
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }
+
+/** Plans are always returned ordered, in the same shape the admin panel sends. */
+export const plansInclude = {
+  orderBy: { sortOrder: 'asc' as const },
+  select: {
+    id: true,
+    name: true,
+    price: true,
+    durationDays: true,
+    validity: true,
+    inStock: true,
+    sortOrder: true,
+  },
+};
+
+/** Validate and normalise incoming plan objects. Throws on invalid input. */
+export const normalizePlans = (plans: PlanInput[]) => {
+  if (!Array.isArray(plans)) {
+    throw new Error('plans must be an array');
+  }
+  return plans.map((plan, index) => {
+    const name = String(plan?.name || plan?.title || '').trim();
+    if (!name) {
+      throw new Error(`plans[${index}].name is required`);
+    }
+    const price = Number(plan.price);
+    if (!Number.isFinite(price) || price < 0) {
+      throw new Error(`plans[${index}].price must be a non-negative number`);
+    }
+    let durationDays: number | null = null;
+    if (plan.durationDays !== undefined && plan.durationDays !== null && plan.durationDays !== '') {
+      durationDays = Number(plan.durationDays);
+      if (!Number.isInteger(durationDays) || durationDays < 0) {
+        throw new Error(`plans[${index}].durationDays must be a non-negative integer`);
+      }
+    }
+    return {
+      id: typeof plan.id === 'string' && plan.id ? plan.id : undefined,
+      name,
+      price: new Prisma.Decimal(price.toFixed(2)),
+      durationDays,
+      validity: plan.validity ? String(plan.validity).trim() : null,
+      inStock: plan.inStock !== undefined ? Boolean(plan.inStock) : true,
+      sortOrder: index,
+    };
+  });
+};
 
 export const productsService = {
   getProductsWithPagination: async (query: GetProductsQuery) => {
@@ -93,6 +150,7 @@ export const productsService = {
               slug: true,
             },
           },
+          plans: plansInclude,
         },
       }),
     ]);
@@ -124,6 +182,7 @@ export const productsService = {
             desc: true,
           },
         },
+        plans: plansInclude,
       },
     });
   },
@@ -145,6 +204,7 @@ export const productsService = {
             desc: true,
           },
         },
+        plans: plansInclude,
       },
     });
   },
@@ -166,6 +226,7 @@ export const productsService = {
             desc: true,
           },
         },
+        plans: plansInclude,
       },
     });
   },
@@ -196,6 +257,8 @@ export const productsService = {
       throw new Error(`A product with slug '${slug}' already exists.`);
     }
 
+    const plans = normalizePlans(data.plans);
+
     return await prisma.product.create({
       data: {
         name: data.name.trim(),
@@ -205,7 +268,9 @@ export const productsService = {
         categoryId: data.categoryId || null,
         stock: data.stock !== undefined ? Boolean(data.stock) : true,
         type: Array.isArray(data.type) ? data.type : [],
-        plans: data.plans,
+        plans: {
+          create: plans.map(({ id: _id, ...plan }) => plan),
+        },
         longDesc: data.longDesc?.trim() || null,
         features: data.features !== undefined ? data.features : Prisma.JsonNull,
       },
@@ -217,6 +282,7 @@ export const productsService = {
             slug: true,
           },
         },
+        plans: plansInclude,
       },
     });
   },
@@ -238,7 +304,6 @@ export const productsService = {
     if (data.smallDesc !== undefined) updateData.smallDesc = data.smallDesc.trim();
     if (data.stock !== undefined) updateData.stock = Boolean(data.stock);
     if (data.type !== undefined) updateData.type = Array.isArray(data.type) ? data.type : [];
-    if (data.plans !== undefined) updateData.plans = data.plans;
     if (data.longDesc !== undefined) updateData.longDesc = data.longDesc ? data.longDesc.trim() : null;
     if (data.features !== undefined) updateData.features = data.features;
 
@@ -270,18 +335,46 @@ export const productsService = {
       }
     }
 
-    return await prisma.product.update({
-      where: { id },
-      data: updateData,
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
+    const plans = data.plans !== undefined ? normalizePlans(data.plans) : undefined;
+
+    return await prisma.$transaction(async (tx) => {
+      await tx.product.update({ where: { id }, data: updateData });
+
+      if (plans) {
+        // Sync: update plans whose id belongs to this product, create the rest, delete removed ones.
+        const existing = await tx.productPlan.findMany({ where: { productId: id }, select: { id: true } });
+        const existingIds = new Set(existing.map((p) => p.id));
+        const keptIds = new Set<string>();
+
+        for (const { id: planId, ...plan } of plans) {
+          if (planId && existingIds.has(planId)) {
+            await tx.productPlan.update({ where: { id: planId }, data: plan });
+            keptIds.add(planId);
+          } else {
+            const created = await tx.productPlan.create({ data: { ...plan, productId: id } });
+            keptIds.add(created.id);
+          }
+        }
+
+        const removed = [...existingIds].filter((planId) => !keptIds.has(planId));
+        if (removed.length > 0) {
+          await tx.productPlan.deleteMany({ where: { id: { in: removed } } });
+        }
+      }
+
+      return await tx.product.findUniqueOrThrow({
+        where: { id },
+        include: {
+          category: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
           },
+          plans: plansInclude,
         },
-      },
+      });
     });
   },
 

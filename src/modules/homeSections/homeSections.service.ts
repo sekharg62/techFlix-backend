@@ -1,3 +1,4 @@
+import { plansInclude } from '../products/products.service';
 import prisma from '../../utils/prisma';
 
 export interface CreateHomeSectionDTO {
@@ -15,6 +16,36 @@ export interface UpdateHomeSectionDTO {
 }
 
 export const homeSectionsService = {
+  /** Storefront view: oldest section first, products with category + plans, no admin-only fields. */
+  getPublicHomeSections: async () => {
+    const sections = await prisma.homeSection.findMany({
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        title: true,
+        desc: true,
+        tag: true,
+        homeSectionProducts: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            product: {
+              include: {
+                category: { select: { id: true, name: true, slug: true } },
+                plans: plansInclude,
+              },
+            },
+          },
+        },
+      },
+    });
+    return sections
+      .map(({ homeSectionProducts, ...section }) => ({
+        ...section,
+        products: homeSectionProducts.map((hp) => hp.product),
+      }))
+      .filter((section) => section.products.length > 0);
+  },
+
   getAllHomeSections: async () => {
     return await prisma.homeSection.findMany({
       orderBy: {
@@ -32,6 +63,7 @@ export const homeSectionsService = {
                     slug: true,
                   },
                 },
+                plans: plansInclude,
               },
             },
           },
@@ -55,6 +87,7 @@ export const homeSectionsService = {
                     slug: true,
                   },
                 },
+                plans: plansInclude,
               },
             },
           },
@@ -88,7 +121,7 @@ export const homeSectionsService = {
         include: {
           homeSectionProducts: {
             include: {
-              product: true,
+              product: { include: { plans: plansInclude } },
             },
           },
         },
@@ -130,7 +163,7 @@ export const homeSectionsService = {
         include: {
           homeSectionProducts: {
             include: {
-              product: true,
+              product: { include: { plans: plansInclude } },
             },
           },
         },
@@ -151,7 +184,7 @@ export const homeSectionsService = {
         productId,
       },
       include: {
-        product: true,
+        product: { include: { plans: plansInclude } },
       },
     });
   },

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as reviewController from './reviews.controller';
 import { authenticate } from '../../middlewares/auth.middleware';
+import { imageUpload } from '../../middlewares/imageUpload.middleware';
 
 const router = Router();
 
@@ -11,9 +12,11 @@ router.get('/', reviewController.getAllReviews);
 router.get('/:id', reviewController.getReviewById);
 
 // Protected Admin Endpoints
-router.post('/', authenticate, reviewController.createReview);
-router.put('/:id', authenticate, reviewController.updateReview);
-router.patch('/:id', authenticate, reviewController.updateReview);
+const profileImage = imageUpload({ urlField: 'profileUrl', folder: 'techflix/reviews', jsonFields: ['starCount'] });
+
+router.post('/', authenticate, profileImage, reviewController.createReview);
+router.put('/:id', authenticate, profileImage, reviewController.updateReview);
+router.patch('/:id', authenticate, profileImage, reviewController.updateReview);
 router.delete('/:id', authenticate, reviewController.deleteReview);
 
 export { router as reviewRoutes };

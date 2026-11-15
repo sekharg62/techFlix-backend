@@ -1,8 +1,8 @@
 import prisma from '../src/utils/prisma';
 
 async function main() {
-  const email = 'techflix.premium@gmail.com';
-  const password = 'admin@techflix#ss2004';
+  const email = 'sekhar@gmail.com';
+  const password = 'password';
 
   const user = await prisma.user.upsert({
     where: { email },

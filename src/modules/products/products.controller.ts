@@ -160,10 +160,10 @@ export const productsController = {
         return;
       }
 
-      if (plans === undefined || plans === null) {
+      if (!Array.isArray(plans)) {
         res.status(400).json({
           success: false,
-          message: 'plans is required and must be a valid JSON object or array',
+          message: 'plans is required and must be an array of { name, price, durationDays?, validity? }',
         });
         return;
       }
@@ -197,7 +197,8 @@ export const productsController = {
     } catch (error: any) {
       const isConflict = error.message?.includes('already exists');
       const isNotFound = error.message?.includes('does not exist');
-      res.status(isConflict ? 409 : isNotFound ? 404 : 500).json({
+      const isBadRequest = error.message?.startsWith('plans');
+      res.status(isConflict ? 409 : isNotFound ? 404 : isBadRequest ? 400 : 500).json({
         success: false,
         message: error.message || 'Failed to create product',
       });
@@ -250,6 +251,14 @@ export const productsController = {
         return;
       }
 
+      if (plans !== undefined && !Array.isArray(plans)) {
+        res.status(400).json({
+          success: false,
+          message: 'plans must be an array of { name, price, durationDays?, validity? }',
+        });
+        return;
+      }
+
       const updated = await productsService.updateProduct(existing.id, {
         name,
         slug,
@@ -271,7 +280,8 @@ export const productsController = {
     } catch (error: any) {
       const isConflict = error.message?.includes('already exists');
       const isNotFound = error.message?.includes('does not exist');
-      res.status(isConflict ? 409 : isNotFound ? 404 : 500).json({
+      const isBadRequest = error.message?.startsWith('plans');
+      res.status(isConflict ? 409 : isNotFound ? 404 : isBadRequest ? 400 : 500).json({
         success: false,
         message: error.message || 'Failed to update product',
       });

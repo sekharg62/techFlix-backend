@@ -4,7 +4,10 @@ import { authenticate } from '../../middlewares/auth.middleware';
 
 const router = Router();
 
-// Protect all home section endpoints
+// Public: sections with their products for the storefront home page
+router.get('/public', homeSectionsController.getPublic);
+
+// Protect all other home section endpoints
 router.use(authenticate);
 
 // CRUD Endpoints

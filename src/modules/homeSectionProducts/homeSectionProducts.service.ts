@@ -1,3 +1,4 @@
+import { plansInclude } from '../products/products.service';
 import prisma from '../../utils/prisma';
 
 export interface CreateHomeSectionProductDTO {
@@ -42,6 +43,7 @@ export const homeSectionProductsService = {
                 slug: true,
               },
             },
+            plans: plansInclude,
           },
         },
       },
@@ -56,6 +58,7 @@ export const homeSectionProductsService = {
         product: {
           include: {
             category: true,
+            plans: plansInclude,
           },
         },
       },
@@ -76,6 +79,7 @@ export const homeSectionProductsService = {
                 slug: true,
               },
             },
+            plans: plansInclude,
           },
         },
       },
@@ -125,6 +129,7 @@ export const homeSectionProductsService = {
                 slug: true,
               },
             },
+            plans: plansInclude,
           },
         },
       },
@@ -183,6 +188,7 @@ export const homeSectionProductsService = {
                 slug: true,
               },
             },
+            plans: plansInclude,
           },
         },
       },

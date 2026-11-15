@@ -2,6 +2,15 @@ import { Request, Response } from 'express';
 import { homeSectionsService } from './homeSections.service';
 
 export const homeSectionsController = {
+  getPublic: async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const sections = await homeSectionsService.getPublicHomeSections();
+      res.status(200).json({ success: true, count: sections.length, data: sections });
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message || 'Failed to fetch home sections' });
+    }
+  },
+
   getAll: async (_req: Request, res: Response): Promise<void> => {
     try {
       const sections = await homeSectionsService.getAllHomeSections();
